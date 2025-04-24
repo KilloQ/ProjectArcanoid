@@ -222,7 +222,7 @@ const App = () => {
 
       ctx.fillStyle = '#000';
       ctx.font = '20px Arial';
-      ctx.fillText(`Score: ${score}`, 10, 25);
+      ctx.fillText(`Очки: ${score}`, 10, 25);
 
       animationFrameRef.current = requestAnimationFrame(animate);
     };
@@ -247,12 +247,12 @@ const App = () => {
         style={{ visibility: 'hidden', position: 'absolute' }} 
       />
       
-      <h1 style={{ color: '#333' }}>Arkanoid with Hand Control</h1>
+      <h1 style={{ color: '#333' }}>Арканоид с управлением рукой</h1>
       
       {gameState === 'menu' && (
         <div style={{ margin: '40px 0' }}>
           <p style={{ fontSize: '18px', marginBottom: '30px' }}>
-            Move your right hand to control the platform
+            Перемещайте правой рукой для движения платформы
           </p>
           <button 
             onClick={resetGame}
@@ -270,7 +270,7 @@ const App = () => {
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#45a049'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4CAF50'}
           >
-            Start Game
+            Начать игру
           </button>
         </div>
       )}
@@ -285,10 +285,10 @@ const App = () => {
           boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
         }}>
           <h2 style={{ color: gameState === 'victory' ? '#4CAF50' : '#F44336' }}>
-            {gameState === 'victory' ? 'You Win!' : 'Game Over!'}
+            {gameState === 'victory' ? 'Вы победили!' : 'Игра окончена!'}
           </h2>
           <p style={{ fontSize: '24px', margin: '20px 0' }}>
-            Your score: <strong>{score}</strong>
+            Ваш счет: <strong>{score}</strong>
           </p>
           <button 
             onClick={resetGame}
@@ -304,7 +304,7 @@ const App = () => {
               boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
             }}
           >
-            Play Again
+            Начать заново
           </button>
         </div>
       )}
@@ -336,7 +336,7 @@ const App = () => {
               cursor: 'pointer'
             }}
           >
-            Back to Menu
+            Вернуться в меню
           </button>
         </div>
       )}
