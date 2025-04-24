@@ -270,23 +270,6 @@ const App = () => {
       ctx.font = '20px Calibri';
       ctx.fillText(`Очки: ${score}`, 10, 25);
 
-      if (isPaused) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(0, 0, WIDTH, HEIGHT);
-        ctx.fillStyle = '#fff';
-        ctx.font = '30px Calibri';
-        ctx.textAlign = 'center';
-        ctx.fillText('ПАУЗА', WIDTH / 2, HEIGHT / 2);
-        ctx.textAlign = 'left';
-      }
-
-      if (!ballRef.current.isMoving) {
-        ctx.fillStyle = '#fff';
-        ctx.font = '16px Calibri';
-        ctx.textAlign = 'center';
-        ctx.fillText('Кликните чтобы запустить мяч', WIDTH / 2, HEIGHT / 2 + 40);
-        ctx.textAlign = 'left';
-      }
 
       animationFrameRef.current = requestAnimationFrame(animate);
     };
