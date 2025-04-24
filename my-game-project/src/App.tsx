@@ -3,6 +3,7 @@ import Webcam from 'react-webcam';
 import { Holistic } from '@mediapipe/holistic';
 import { Camera } from '@mediapipe/camera_utils';
 import type { Results } from '@mediapipe/holistic';
+import './index.css';
 
 const WIDTH = 600;
 const HEIGHT = 400;
@@ -33,6 +34,7 @@ type Ball = {
   y: number;
   dx: number;
   dy: number;
+  isMoving: boolean;
 };
 
 const App = () => {
@@ -43,11 +45,18 @@ const App = () => {
   const platformXRef = useRef(WIDTH / 2 - PLATFORM_WIDTH / 2);
   const targetXRef = useRef(platformXRef.current);
   const handHistory = useRef<number[]>([]);
-  const ballRef = useRef<Ball>({ x: WIDTH / 2, y: HEIGHT / 2, dx: BALL_SPEED, dy: -BALL_SPEED });
+  const ballRef = useRef<Ball>({ 
+    x: WIDTH / 2, 
+    y: HEIGHT / 2, 
+    dx: 0, 
+    dy: 0,
+    isMoving: false 
+  });
 
   const [score, setScore] = useState(0);
   const [gameState, setGameState] = useState<'menu' | 'playing' | 'gameover' | 'victory'>('menu');
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
 
   const initBlocks = useCallback(() => {
     return Array.from({ length: BLOCK_ROWS }, (_, rowIndex) =>
@@ -61,15 +70,39 @@ const App = () => {
 
   const resetGame = useCallback(() => {
     setBlocks(initBlocks());
-    ballRef.current = { x: WIDTH / 2, y: HEIGHT / 2, dx: BALL_SPEED, dy: -BALL_SPEED };
+    ballRef.current = { 
+      x: WIDTH / 2, 
+      y: HEIGHT / 2, 
+      dx: 0, 
+      dy: 0,
+      isMoving: false 
+    };
     platformXRef.current = WIDTH / 2 - PLATFORM_WIDTH / 2;
     targetXRef.current = platformXRef.current;
     setScore(0);
     setGameState('playing');
+    setIsPaused(false);
   }, [initBlocks]);
 
+  const launchBall = useCallback(() => {
+    if (!ballRef.current.isMoving && gameState === 'playing') {
+      ballRef.current = {
+        ...ballRef.current,
+        dx: BALL_SPEED,
+        dy: -BALL_SPEED,
+        isMoving: true
+      };
+    }
+  }, [gameState]);
+
+  const togglePause = useCallback(() => {
+    if (gameState === 'playing') {
+      setIsPaused(prev => !prev);
+    }
+  }, [gameState]);
+
   const onResults = useCallback((results: Results) => {
-    if (results.poseLandmarks && gameState === 'playing') {
+    if (results.poseLandmarks && gameState === 'playing' && !isPaused) {
       const rightHand = results.poseLandmarks[16];
       if (rightHand) {
         let x = rightHand.x * WIDTH;
@@ -83,7 +116,18 @@ const App = () => {
         targetXRef.current = Math.max(0, Math.min(WIDTH - PLATFORM_WIDTH, avgX - PLATFORM_WIDTH / 2));
       }
     }
-  }, [gameState]);
+  }, [gameState, isPaused]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        togglePause();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePause]);
 
   useEffect(() => {
     const holistic = new Holistic({
@@ -116,7 +160,7 @@ const App = () => {
   }, [onResults]);
 
   useEffect(() => {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' || isPaused) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -126,86 +170,88 @@ const App = () => {
     const animate = () => {
       platformXRef.current += (targetXRef.current - platformXRef.current) * SMOOTHING_FACTOR;
 
-      ballRef.current.x += ballRef.current.dx;
-      ballRef.current.y += ballRef.current.dy;
+      if (ballRef.current.isMoving) {
+        ballRef.current.x += ballRef.current.dx;
+        ballRef.current.y += ballRef.current.dy;
 
-      if (ballRef.current.x <= 0 || ballRef.current.x + BALL_SIZE >= WIDTH) {
-        ballRef.current.dx *= -1;
-      }
-      if (ballRef.current.y <= 0) {
-        ballRef.current.dy *= -1;
-      }
+        if (ballRef.current.x <= 0 || ballRef.current.x + BALL_SIZE >= WIDTH) {
+          ballRef.current.dx *= -1;
+        }
+        if (ballRef.current.y <= 0) {
+          ballRef.current.dy *= -1;
+        }
 
-      if (ballRef.current.y + BALL_SIZE >= PLATFORM_Y &&
-          ballRef.current.x + BALL_SIZE >= platformXRef.current &&
-          ballRef.current.x <= platformXRef.current + PLATFORM_WIDTH) {
-        const hitPoint = (ballRef.current.x + BALL_SIZE / 2) - (platformXRef.current + PLATFORM_WIDTH / 2);
-        const normalized = hitPoint / (PLATFORM_WIDTH / 2);
-        const angle = normalized * (Math.PI / 3);
-        const speed = Math.sqrt(ballRef.current.dx ** 2 + ballRef.current.dy ** 2);
-        ballRef.current.dx = speed * Math.sin(angle);
-        ballRef.current.dy = -Math.abs(speed * Math.cos(angle));
-        ballRef.current.y = PLATFORM_Y - BALL_SIZE;
-      }
+        if (ballRef.current.y + BALL_SIZE >= PLATFORM_Y &&
+            ballRef.current.x + BALL_SIZE >= platformXRef.current &&
+            ballRef.current.x <= platformXRef.current + PLATFORM_WIDTH) {
+          const hitPoint = (ballRef.current.x + BALL_SIZE / 2) - (platformXRef.current + PLATFORM_WIDTH / 2);
+          const normalized = hitPoint / (PLATFORM_WIDTH / 2);
+          const angle = normalized * (Math.PI / 3);
+          const speed = Math.sqrt(ballRef.current.dx ** 2 + ballRef.current.dy ** 2);
+          ballRef.current.dx = speed * Math.sin(angle);
+          ballRef.current.dy = -Math.abs(speed * Math.cos(angle));
+          ballRef.current.y = PLATFORM_Y - BALL_SIZE;
+        }
 
-      let destroyedCount = 0;
-      const updatedBlocks = blocks.map(block => {
-        if (!block.isDestroyed) {
-          if (ballRef.current.x + BALL_SIZE > block.x &&
-              ballRef.current.x < block.x + BLOCK_WIDTH &&
-              ballRef.current.y + BALL_SIZE > block.y &&
-              ballRef.current.y < block.y + BLOCK_HEIGHT) {
-            
-            const ballCenter = {
-              x: ballRef.current.x + BALL_SIZE / 2,
-              y: ballRef.current.y + BALL_SIZE / 2
-            };
-            const blockCenter = {
-              x: block.x + BLOCK_WIDTH / 2,
-              y: block.y + BLOCK_HEIGHT / 2
-            };
+        let destroyedCount = 0;
+        const updatedBlocks = blocks.map(block => {
+          if (!block.isDestroyed) {
+            if (ballRef.current.x + BALL_SIZE > block.x &&
+                ballRef.current.x < block.x + BLOCK_WIDTH &&
+                ballRef.current.y + BALL_SIZE > block.y &&
+                ballRef.current.y < block.y + BLOCK_HEIGHT) {
+              
+              const ballCenter = {
+                x: ballRef.current.x + BALL_SIZE / 2,
+                y: ballRef.current.y + BALL_SIZE / 2
+              };
+              const blockCenter = {
+                x: block.x + BLOCK_WIDTH / 2,
+                y: block.y + BLOCK_HEIGHT / 2
+              };
 
-            const dx = ballCenter.x - blockCenter.x;
-            const dy = ballCenter.y - blockCenter.y;
-            const width = (BALL_SIZE + BLOCK_WIDTH) / 2;
-            const height = (BALL_SIZE + BLOCK_HEIGHT) / 2;
-            const crossWidth = width * dy;
-            const crossHeight = height * dx;
+              const dx = ballCenter.x - blockCenter.x;
+              const dy = ballCenter.y - blockCenter.y;
+              const width = (BALL_SIZE + BLOCK_WIDTH) / 2;
+              const height = (BALL_SIZE + BLOCK_HEIGHT) / 2;
+              const crossWidth = width * dy;
+              const crossHeight = height * dx;
 
-            if (Math.abs(dx) <= width && Math.abs(dy) <= height) {
-              if (crossWidth > crossHeight) {
-                ballRef.current.dy *= -1;
-              } else {
-                ballRef.current.dx *= -1;
+              if (Math.abs(dx) <= width && Math.abs(dy) <= height) {
+                if (crossWidth > crossHeight) {
+                  ballRef.current.dy *= -1;
+                } else {
+                  ballRef.current.dx *= -1;
+                }
+                destroyedCount++;
+                return { ...block, isDestroyed: true };
               }
-              destroyedCount++;
-              return { ...block, isDestroyed: true };
             }
           }
+          return block;
+        });
+
+        if (destroyedCount > 0) {
+          setBlocks(updatedBlocks);
+          setScore(prev => prev + destroyedCount * 10);
         }
-        return block;
-      });
 
-      if (destroyedCount > 0) {
-        setBlocks(updatedBlocks);
-        setScore(prev => prev + destroyedCount * 10);
-      }
+        if (updatedBlocks.every(block => block.isDestroyed)) {
+          setGameState('victory');
+          return;
+        }
 
-      if (updatedBlocks.every(block => block.isDestroyed)) {
-        setGameState('victory');
-        return;
-      }
-
-      if (ballRef.current.y > HEIGHT) {
-        setGameState('gameover');
-        return;
+        if (ballRef.current.y > HEIGHT) {
+          setGameState('gameover');
+          return;
+        }
       }
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
       ctx.fillStyle = '#4CAF50';
       ctx.strokeStyle = '#388E3C';
-      updatedBlocks.forEach(block => {
+      blocks.forEach(block => {
         if (!block.isDestroyed) {
           ctx.fillRect(block.x, block.y, BLOCK_WIDTH, BLOCK_HEIGHT);
           ctx.strokeRect(block.x, block.y, BLOCK_WIDTH, BLOCK_HEIGHT);
@@ -221,8 +267,26 @@ const App = () => {
       ctx.fill();
 
       ctx.fillStyle = '#000';
-      ctx.font = '20px Arial';
+      ctx.font = '20px Calibri';
       ctx.fillText(`Очки: ${score}`, 10, 25);
+
+      if (isPaused) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillStyle = '#fff';
+        ctx.font = '30px Calibri';
+        ctx.textAlign = 'center';
+        ctx.fillText('ПАУЗА', WIDTH / 2, HEIGHT / 2);
+        ctx.textAlign = 'left';
+      }
+
+      if (!ballRef.current.isMoving) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '16px Calibri';
+        ctx.textAlign = 'center';
+        ctx.fillText('Кликните чтобы запустить мяч', WIDTH / 2, HEIGHT / 2 + 40);
+        ctx.textAlign = 'left';
+      }
 
       animationFrameRef.current = requestAnimationFrame(animate);
     };
@@ -232,43 +296,25 @@ const App = () => {
     return () => {
       cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [gameState, blocks, score]);
+  }, [gameState, blocks, score, isPaused]);
 
   return (
-    <div style={{ 
-      textAlign: 'center', 
-      fontFamily: 'Arial, sans-serif',
-      backgroundColor: '#f5f5f5',
-      minHeight: '100vh',
-      padding: '20px'
-    }}>
+    <div className="app-container">
       <Webcam 
         ref={webcamRef} 
-        style={{ visibility: 'hidden', position: 'absolute' }} 
+        className="webcam" 
       />
       
-      <h1 style={{ color: '#333' }}>Арканоид с управлением рукой</h1>
+      <h1 className="title">Арканоид с управлением рукой</h1>
       
       {gameState === 'menu' && (
-        <div style={{ margin: '40px 0' }}>
-          <p style={{ fontSize: '18px', marginBottom: '30px' }}>
+        <div className="menu-container">
+          <p className="instructions">
             Перемещайте правой рукой для движения платформы
           </p>
           <button 
             onClick={resetGame}
-            style={{
-              padding: '12px 30px',
-              fontSize: '18px',
-              backgroundColor: '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-              transition: 'background-color 0.3s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#45a049'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4CAF50'}
+            className="start-button"
           >
             Начать игру
           </button>
@@ -276,65 +322,43 @@ const App = () => {
       )}
 
       {(gameState === 'gameover' || gameState === 'victory') && (
-        <div style={{ 
-          margin: '40px 0',
-          padding: '20px',
-          backgroundColor: 'white',
-          borderRadius: '5px',
-          display: 'inline-block',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-        }}>
-          <h2 style={{ color: gameState === 'victory' ? '#4CAF50' : '#F44336' }}>
+        <div className="result-container">
+          <h2 className={`result-title ${gameState === 'victory' ? 'victory' : 'gameover'}`}>
             {gameState === 'victory' ? 'Вы победили!' : 'Игра окончена!'}
           </h2>
-          <p style={{ fontSize: '24px', margin: '20px 0' }}>
+          <p className="score-display">
             Ваш счет: <strong>{score}</strong>
           </p>
           <button 
             onClick={resetGame}
-            style={{
-              padding: '12px 30px',
-              fontSize: '18px',
-              backgroundColor: gameState === 'victory' ? '#4CAF50' : '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              margin: '10px',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-            }}
+            className={`restart-button ${gameState === 'victory' ? 'victory' : 'gameover'}`}
           >
             Начать заново
           </button>
         </div>
       )}
 
-      <div style={{ margin: '20px auto', display: 'inline-block' }}>
+      <div className="canvas-container">
         <canvas 
           ref={canvasRef} 
           width={WIDTH} 
           height={HEIGHT} 
-          style={{ 
-            border: '2px solid #333',
-            borderRadius: '5px',
-            backgroundColor: 'white',
-            display: gameState === 'playing' ? 'block' : 'none',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
-          }} 
+          className={`game-canvas ${gameState === 'playing' ? 'visible' : 'hidden'}`}
+          onClick={launchBall}
         />
       </div>
 
       {gameState === 'playing' && (
-        <div style={{ marginTop: '20px' }}>
+        <div className="game-controls">
+          <button 
+            onClick={togglePause}
+            className="pause-button"
+          >
+            {isPaused ? 'Продолжить' : 'Пауза'}
+          </button>
           <button 
             onClick={() => setGameState('menu')}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#f5f5f5',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
+            className="menu-button"
           >
             Вернуться в меню
           </button>
